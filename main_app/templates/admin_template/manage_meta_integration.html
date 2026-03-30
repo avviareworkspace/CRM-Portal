@@ -1,0 +1,113 @@
+{% extends 'main_app/base.html' %}
+{% load static %}
+{% block page_title %}{{ page_title }}{% endblock page_title %}
+{% block content_title %}{{ page_title }}{% endblock content_title %}
+
+{% block content %}
+<section class="content">
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-lg-8">
+                <div class="card card-primary">
+                    <div class="card-header">
+                        <h3 class="card-title">Connection</h3>
+                    </div>
+                    <form method="post" novalidate>
+                        {% csrf_token %}
+                        <div class="card-body">
+                            {% if form.non_field_errors %}
+                                <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+                            {% endif %}
+                            <p class="text-muted">
+                                Same app in
+                                <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener">Meta for Developers</a>:
+                                add <strong>WhatsApp</strong>, <strong>Instagram</strong>, and/or <strong>Facebook</strong> (Page) products, then set this callback URL on each product’s webhooks.
+                            </p>
+
+                            <div class="form-group">
+                                <label for="{{ form.public_base_url.id_for_label }}">Public site URL</label>
+                                {{ form.public_base_url }}
+                                <small class="form-text text-muted">HTTPS root of this CRM (no trailing slash). Used to display the callback URL below.</small>
+                                {% if form.public_base_url.errors %}<span class="text-danger">{{ form.public_base_url.errors }}</span>{% endif %}
+                            </div>
+
+                            <div class="form-group">
+                                <label for="{{ form.verify_token.id_for_label }}">Verify token</label>
+                                {{ form.verify_token }}
+                                <small class="form-text text-muted">Choose any secret string; paste the same value in Meta’s “Verify token” field.</small>
+                                {% if form.verify_token.errors %}<span class="text-danger">{{ form.verify_token.errors }}</span>{% endif %}
+                            </div>
+
+                            <div class="form-group">
+                                <label for="{{ form.app_secret.id_for_label }}">App secret</label>
+                                {{ form.app_secret }}
+                                <small class="form-text text-muted">From App settings → Basic. Required so incoming webhooks can be signature-checked.</small>
+                                {% if form.app_secret.errors %}<span class="text-danger">{{ form.app_secret.errors }}</span>{% endif %}
+                            </div>
+
+                            <div class="form-group">
+                                <label for="{{ form.access_token.id_for_label }}">Access token</label>
+                                {{ form.access_token }}
+                                <small class="form-text text-muted">Permanent or long-lived token with <code>whatsapp_business_messaging</code> (and Instagram scopes if needed). Needed to <em>send</em> replies from code.</small>
+                                {% if form.access_token.errors %}<span class="text-danger">{{ form.access_token.errors }}</span>{% endif %}
+                            </div>
+
+                            <div class="form-group">
+                                <label for="{{ form.whatsapp_phone_number_id.id_for_label }}">WhatsApp Phone number ID</label>
+                                {{ form.whatsapp_phone_number_id }}
+                                <small class="form-text text-muted">WhatsApp → API setup in the Meta dashboard.</small>
+                                {% if form.whatsapp_phone_number_id.errors %}<span class="text-danger">{{ form.whatsapp_phone_number_id.errors }}</span>{% endif %}
+                            </div>
+
+                            <div class="form-group">
+                                <label for="{{ form.facebook_page_id.id_for_label }}">Facebook Page ID (for replies)</label>
+                                {{ form.facebook_page_id }}
+                                <small class="form-text text-muted">Used to send Messenger/Instagram replies when the webhook entry id is not your Page id. Find it under Page → About or Meta developer tools.</small>
+                                {% if form.facebook_page_id.errors %}<span class="text-danger">{{ form.facebook_page_id.errors }}</span>{% endif %}
+                            </div>
+
+                            <div class="form-check mb-2">
+                                {{ form.whatsapp_enabled }}
+                                <label class="form-check-label" for="{{ form.whatsapp_enabled.id_for_label }}">Accept WhatsApp inbound (creates/updates leads)</label>
+                            </div>
+                            <div class="form-check mb-2">
+                                {{ form.instagram_enabled }}
+                                <label class="form-check-label" for="{{ form.instagram_enabled.id_for_label }}">Accept Instagram DMs (webhook object <code>instagram</code>)</label>
+                            </div>
+                            <div class="form-check mb-2">
+                                {{ form.facebook_messenger_enabled }}
+                                <label class="form-check-label" for="{{ form.facebook_messenger_enabled.id_for_label }}">Accept Facebook Page / Messenger (webhook object <code>page</code>)</label>
+                            </div>
+                            <div class="form-check mb-2">
+                                {{ form.notify_admins_on_message }}
+                                <label class="form-check-label" for="{{ form.notify_admins_on_message.id_for_label }}">Notify all admins on each message</label>
+                            </div>
+                        </div>
+                        <div class="card-footer">
+                            <button type="submit" class="btn btn-primary">Save</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="card card-outline card-secondary">
+                    <div class="card-header">
+                        <h3 class="card-title">Webhook callback URL</h3>
+                    </div>
+                    <div class="card-body">
+                        {% if webhook_full_url %}
+                            <p class="mb-2"><strong>Copy into Meta:</strong></p>
+                            <code class="d-block small text-break p-2 bg-light border rounded">{{ webhook_full_url }}</code>
+                        {% else %}
+                            <p class="text-warning mb-0">Set <strong>Public site URL</strong> on the left, save, then reload — the full callback URL will appear here.</p>
+                        {% endif %}
+                        <hr>
+                        <p class="small text-muted mb-0">Path only: <code>{{ webhook_path }}</code></p>
+                        <p class="small text-muted mt-2 mb-0">In Meta: subscribe to <code>messages</code> for WhatsApp; add the <strong>Instagram</strong> and/or <strong>Page</strong> products and subscribe to their messaging webhooks (same callback URL).</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock content %}

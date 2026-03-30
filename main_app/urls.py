@@ -1,23 +1,9 @@
-"""CRM System URL Configuration
-
-The `urlpatterns` list routes URLs to views. For more information please see:
-    https://docs.djangoproject.com/en/3.1/topics/http/urls/
-Examples:
-Function views
-    1. Add an import:  from my_app import views
-    2. Add a URL to urlpatterns:  path('', views.home, name='home')
-Class-based views
-    1. Add an import:  from other_app.views import Home
-    2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
-Including another URLconf
-    1. Import the include() function: from django.urls import include, path
-    2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
-"""
+"""URL routes for main_app (admin, counsellor, auth)."""
 from django.urls import path
 from django.conf import settings
 from django.contrib.auth import views as auth_views
 
-from . import admin_views, counsellor_views, views
+from . import admin_views, counsellor_views, views, views_meta
 
 urlpatterns = [
     # Authentication URLs
@@ -25,7 +11,13 @@ urlpatterns = [
     path("doLogin/", views.doLogin, name='user_login'),
     path("logout_user/", views.logout_user, name='user_logout'),
     path("firebase-messaging-sw.js", views.showFirebaseJS, name='showFirebaseJS'),
-    
+
+    path(
+        "integrations/meta/webhook/",
+        views_meta.meta_webhook,
+        name="meta_webhook",
+    ),
+
     # Password Reset URLs
     path('password_reset/', auth_views.PasswordResetView.as_view(), name='password_reset'),
     path('password_reset/done/', auth_views.PasswordResetDoneView.as_view(), name='password_reset_done'),
@@ -67,6 +59,18 @@ urlpatterns = [
     path("leads/transfer/<int:lead_id>/", admin_views.transfer_lead, name='transfer_lead'),
     
     # Lead Sources
+    path(
+        "integrations/meta/settings/",
+        views_meta.manage_meta_integration,
+        name="manage_meta_integration",
+    ),
+    path("integrations/chats/", views_meta.social_chat_inbox, name="social_chat_inbox"),
+    path(
+        "integrations/chats/<int:thread_id>/send/",
+        views_meta.social_chat_send,
+        name="social_chat_send",
+    ),
+
     path("lead-sources/manage/", admin_views.manage_lead_sources, name='manage_lead_sources'),
     path("lead-sources/add/", admin_views.add_lead_source, name='add_lead_source'),
     path("lead-sources/edit/<int:source_id>/", admin_views.edit_lead_source, name='edit_lead_source'),
@@ -157,9 +161,8 @@ urlpatterns = [
     
 ]
 
-# Debug-only endpoints
 if settings.DEBUG:
     urlpatterns += [
-    path('test-login/', views.test_login, name='test_login'),
-    path('run-migrations/', views.run_migrations, name='run_migrations'),
-]
+        path('test-login/', views.test_login, name='test_login'),
+        path('run-migrations/', views.run_migrations, name='run_migrations'),
+    ]

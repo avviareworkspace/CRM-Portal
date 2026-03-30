@@ -233,7 +233,7 @@ def _fetch_admin_home_cached_payload():
 
 @admin_required
 def admin_home(request):
-    """Admin Dashboard with comprehensive CRM analytics"""
+    """Admin dashboard (aggregates cached; see ADMIN_DASHBOARD_CACHE_SECONDS)."""
     ttl = int(getattr(settings, 'ADMIN_DASHBOARD_CACHE_SECONDS', 45))
     cache_key = 'crm:admin_home_dashboard_v2'
 
@@ -283,7 +283,7 @@ def admin_home(request):
 
 @admin_required
 def counsellor_activity_progress_report(request):
-    """Per-counsellor pipeline, daily target, and activity metrics (separate from dashboard)."""
+    """Per-counsellor pipeline, targets, and activity (report page)."""
     counsellor_activity_progress = []
     for c in Counsellor.objects.filter(is_active=True).select_related('admin').order_by(
         'admin__first_name', 'admin__last_name'
@@ -887,11 +887,16 @@ def assign_leads_to_counsellors(request):
         if oldest_unassigned:
             oldest_unassigned_days = (datetime.now().replace(tzinfo=None) - oldest_unassigned.created_at.replace(tzinfo=None)).days
         
-        # Get counsellor workload data
+        # Get counsellor workload data (single query: annotate counts, no N+1)
         counsellor_workload = []
-        for counsellor in Counsellor.objects.filter(is_active=True):
-            lead_count = Lead.objects.filter(assigned_counsellor=counsellor).count()
-            
+        for counsellor in (
+            Counsellor.objects.filter(is_active=True)
+            .select_related('admin')
+            .annotate(lead_count=Count('lead'))
+            .order_by('admin__first_name', 'admin__last_name')
+        ):
+            lead_count = counsellor.lead_count
+
             # Determine capacity and workload status
             if lead_count <= 10:
                 capacity = "Low (≤10 leads)"
@@ -1245,7 +1250,7 @@ def delete_lead_source(request, source_id):
     return redirect(reverse('manage_lead_sources'))
 
 
-# ── Lead Status CRUD (mirrors Lead Source) ──────────────────────────────
+# Lead statuses (same pattern as lead sources)
 
 @admin_required
 @admin_perm_required('settings')
@@ -1335,7 +1340,7 @@ def delete_lead_status(request, status_id):
     return redirect(reverse('manage_lead_statuses'))
 
 
-# ── Activity Type CRUD ──────────────────────────────────────────────────
+# Activity types
 
 @admin_required
 @admin_perm_required('settings')
@@ -1414,7 +1419,7 @@ def delete_activity_type(request, type_id):
     return redirect(reverse('manage_activity_types'))
 
 
-# ── Next Action CRUD ────────────────────────────────────────────────────
+# Next actions
 
 @admin_required
 @admin_perm_required('settings')
@@ -1493,7 +1498,7 @@ def delete_next_action(request, action_id):
     return redirect(reverse('manage_next_actions'))
 
 
-# ── Daily Targets (simple) ───────────────────────────────────────────────
+# Daily targets
 
 @admin_required
 def manage_daily_targets(request):

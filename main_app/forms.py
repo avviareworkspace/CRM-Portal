@@ -9,7 +9,6 @@ import os
 class FormSettings(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super(FormSettings, self).__init__(*args, **kwargs)
-        # Here make some changes such as:
         for field in self.visible_fields():
             field.field.widget.attrs['class'] = 'form-control'
 
@@ -485,3 +484,68 @@ class DailyTargetForm(forms.Form):
         widget=forms.CheckboxSelectMultiple,
         required=False,
     )
+
+
+class MetaIntegrationSettingsForm(forms.ModelForm):
+    """Secrets: leave blank on save to keep the previous value."""
+
+    class Meta:
+        model = MetaIntegrationSettings
+        fields = [
+            "public_base_url",
+            "verify_token",
+            "app_secret",
+            "access_token",
+            "whatsapp_phone_number_id",
+            "facebook_page_id",
+            "whatsapp_enabled",
+            "instagram_enabled",
+            "facebook_messenger_enabled",
+            "notify_admins_on_message",
+        ]
+        widgets = {
+            "public_base_url": forms.URLInput(
+                attrs={"class": "form-control", "placeholder": "https://your-domain.com"}
+            ),
+            "verify_token": forms.TextInput(attrs={"class": "form-control"}),
+            "app_secret": forms.PasswordInput(
+                render_value=False,
+                attrs={"class": "form-control", "placeholder": "Leave blank to keep current"},
+            ),
+            "access_token": forms.PasswordInput(
+                render_value=False,
+                attrs={"class": "form-control", "placeholder": "Leave blank to keep current"},
+            ),
+            "whatsapp_phone_number_id": forms.TextInput(attrs={"class": "form-control"}),
+            "facebook_page_id": forms.TextInput(
+                attrs={"class": "form-control", "placeholder": "Numeric Page ID for Messenger/IG sends"}
+            ),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        inst = kwargs.get("instance")
+        if inst:
+            if inst.app_secret:
+                self.fields["app_secret"].help_text = "Leave blank to keep the current secret."
+            if inst.access_token:
+                self.fields["access_token"].help_text = "Leave blank to keep the current token."
+
+    def clean_public_base_url(self):
+        url = (self.cleaned_data.get("public_base_url") or "").strip().rstrip("/")
+        return url
+
+    def save(self, commit=True):
+        inst = super().save(commit=False)
+        try:
+            prev = MetaIntegrationSettings.objects.get(pk=1)
+        except MetaIntegrationSettings.DoesNotExist:
+            prev = None
+        if prev:
+            if not (self.cleaned_data.get("app_secret") or "").strip():
+                inst.app_secret = prev.app_secret
+            if not (self.cleaned_data.get("access_token") or "").strip():
+                inst.access_token = prev.access_token
+        if commit:
+            inst.save()
+        return inst

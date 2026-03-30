@@ -174,7 +174,6 @@ def get_counsellor_activity_snapshot(counsellor):
         counsellor=counsellor, is_completed=False
     ).count()
 
-    # ── Toward daily target (same queryset as Today's Target page) ──
     new_leads_today = my_leads.filter(
         created_at__gte=today_start,
         created_at__lt=today_end,

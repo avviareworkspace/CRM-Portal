@@ -4,6 +4,7 @@ from django.dispatch import receiver
 from django.db.models.signals import post_save
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+from django.utils import timezone
 from datetime import datetime, timedelta
 import uuid
 import logging
@@ -475,6 +476,151 @@ class DailyTargetAssignment(models.Model):
 
     def __str__(self):
         return f"{self.counsellor.admin.first_name} — {self.target}"
+
+
+class MetaIntegrationSettings(models.Model):
+    """
+    Single row (pk=1): Meta WhatsApp Cloud API + Instagram + Facebook Page (Messenger) webhooks.
+    Secrets are stored in the database; restrict DB access in production. Env vars override when set.
+    """
+
+    public_base_url = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Public site URL, no trailing slash (e.g. https://crm.example.com). Used to show the webhook URL.",
+    )
+    verify_token = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Same token you enter in Meta Developer → Webhooks → Verify token.",
+    )
+    app_secret = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Meta App Secret (for X-Hub-Signature-256). Strongly recommended in production.",
+    )
+    access_token = models.TextField(
+        blank=True,
+        help_text="System User or permanent access token for sending WhatsApp replies via Graph API.",
+    )
+    whatsapp_phone_number_id = models.CharField(
+        max_length=64,
+        blank=True,
+        help_text="WhatsApp → API Setup → Phone number ID.",
+    )
+    facebook_page_id = models.CharField(
+        max_length=64,
+        blank=True,
+        help_text="Facebook Page ID for sending Messenger/Instagram replies (Graph API).",
+    )
+    whatsapp_enabled = models.BooleanField(default=False)
+    instagram_enabled = models.BooleanField(default=False)
+    facebook_messenger_enabled = models.BooleanField(
+        default=False,
+        help_text="Inbound Facebook Page messages (Messenger) — webhook object type “page”.",
+    )
+    notify_admins_on_message = models.BooleanField(
+        default=True,
+        help_text="Create an admin notification for each inbound WhatsApp / Instagram / Facebook message.",
+    )
+
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Meta / WhatsApp / Instagram / Facebook integration"
+        verbose_name_plural = "Meta / WhatsApp / Instagram / Facebook integration"
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def get_solo(cls):
+        obj, _ = cls.objects.get_or_create(
+            pk=1,
+            defaults={
+                "verify_token": "",
+                "public_base_url": "",
+            },
+        )
+        return obj
+
+
+class SocialChatThread(models.Model):
+    """One conversation per channel + external user (WhatsApp wa_id or Messenger PSID / IG id)."""
+
+    CHANNEL_WHATSAPP = "whatsapp"
+    CHANNEL_INSTAGRAM = "instagram"
+    CHANNEL_FACEBOOK = "facebook"
+    CHANNEL_CHOICES = (
+        (CHANNEL_WHATSAPP, "WhatsApp"),
+        (CHANNEL_INSTAGRAM, "Instagram"),
+        (CHANNEL_FACEBOOK, "Facebook"),
+    )
+
+    channel = models.CharField(max_length=20, choices=CHANNEL_CHOICES, db_index=True)
+    external_user_id = models.CharField(
+        max_length=128,
+        db_index=True,
+        help_text="WhatsApp wa_id or Messenger/Instagram scoped user id.",
+    )
+    page_or_waba_id = models.CharField(
+        max_length=128,
+        blank=True,
+        help_text="Facebook Page id or WABA id from webhook entry (for routing sends).",
+    )
+    display_name = models.CharField(max_length=200, blank=True)
+    lead = models.ForeignKey(
+        "Lead",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="social_threads",
+    )
+    last_message_at = models.DateTimeField(db_index=True, default=timezone.now)
+    last_message_preview = models.CharField(max_length=300, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-last_message_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["channel", "external_user_id", "page_or_waba_id"],
+                name="uniq_social_thread_channel_user_page",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["channel", "last_message_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.get_channel_display()} {self.display_name or self.external_user_id}"
+
+
+class SocialChatMessage(models.Model):
+    DIRECTION_IN = "in"
+    DIRECTION_OUT = "out"
+    DIRECTION_CHOICES = ((DIRECTION_IN, "Inbound"), (DIRECTION_OUT, "Outbound"))
+
+    thread = models.ForeignKey(
+        SocialChatThread,
+        on_delete=models.CASCADE,
+        related_name="messages",
+    )
+    direction = models.CharField(max_length=3, choices=DIRECTION_CHOICES, db_index=True)
+    body = models.TextField()
+    external_message_id = models.CharField(max_length=128, blank=True)
+    error_detail = models.CharField(max_length=500, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        indexes = [
+            models.Index(fields=["thread", "created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.direction} @ {self.created_at}"
 
 
 def _is_admin_user_type(user_type) -> bool:

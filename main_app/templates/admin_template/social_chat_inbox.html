@@ -1,0 +1,103 @@
+{% extends 'main_app/base.html' %}
+{% load static %}
+{% block page_title %}{{ page_title }}{% endblock page_title %}
+{% block content_title %}{{ page_title }}{% endblock content_title %}
+
+{% block content %}
+<section class="content">
+    <div class="container-fluid">
+        <div class="row" style="min-height: 70vh;">
+            <div class="col-md-4 border-right pr-md-0">
+                <div class="card card-outline card-secondary h-100 mb-0">
+                    <div class="card-header">
+                        <h3 class="card-title">Conversations</h3>
+                        <span class="badge badge-light float-right">{{ threads|length }}</span>
+                    </div>
+                    <div class="list-group list-group-flush overflow-auto" style="max-height: 70vh;">
+                        {% for t in threads %}
+                            <a href="{% url 'social_chat_inbox' %}?thread={{ t.pk }}"
+                               class="list-group-item list-group-item-action {% if active_thread and active_thread.pk == t.pk %}active{% endif %}">
+                                <div class="d-flex w-100 justify-content-between">
+                                    <strong class="mb-1">{{ t.display_name|default:t.external_user_id }}</strong>
+                                    <small class="text-muted">{{ t.last_message_at|date:"M j, H:i" }}</small>
+                                </div>
+                                <span class="badge badge-{% if t.channel == 'whatsapp' %}success{% elif t.channel == 'instagram' %}danger{% else %}primary{% endif %}">
+                                    {{ t.get_channel_display }}
+                                </span>
+                                <p class="mb-0 mt-1 small {% if active_thread and active_thread.pk == t.pk %}text-white-50{% else %}text-muted{% endif %} text-truncate">
+                                    {{ t.last_message_preview|default:"—" }}
+                                </p>
+                            </a>
+                        {% empty %}
+                            <div class="p-4 text-center text-muted">
+                                No chats yet. When WhatsApp / Instagram / Facebook messages arrive via the webhook, they appear here.
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-8 pl-md-0">
+                {% if active_thread %}
+                    <div class="card card-primary h-100 mb-0 d-flex flex-column">
+                        <div class="card-header">
+                            <h3 class="card-title">
+                                {{ active_thread.display_name|default:active_thread.external_user_id }}
+                                <span class="badge badge-light ml-2">{{ active_thread.get_channel_display }}</span>
+                            </h3>
+                            <div class="card-tools">
+                                {% if active_thread.lead %}
+                                    <a href="{% url 'admin_view_lead' active_thread.lead.pk %}" class="btn btn-tool text-white" title="Open lead">
+                                        <i class="fas fa-user"></i> Lead
+                                    </a>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="card-body flex-grow-1 overflow-auto bg-light" style="max-height: 50vh;">
+                            {% for m in message_list %}
+                                <div class="mb-3 {% if m.direction == 'out' %}text-right{% endif %}">
+                                    <div class="d-inline-block text-left p-2 rounded shadow-sm {% if m.direction == 'out' %}bg-primary text-white{% else %}bg-white border{% endif %}"
+                                         style="max-width: 85%;">
+                                        {{ m.body|linebreaksbr }}
+                                        {% if m.error_detail %}
+                                            <div class="small mt-1 text-warning"><i class="fas fa-exclamation-triangle"></i> {{ m.error_detail }}</div>
+                                        {% endif %}
+                                    </div>
+                                    <div class="small text-muted mt-1">
+                                        {% if m.direction == 'out' %}You{% else %}Them{% endif %}
+                                        · {{ m.created_at|date:"M j, H:i" }}
+                                    </div>
+                                </div>
+                            {% empty %}
+                                <p class="text-muted">No messages in this thread.</p>
+                            {% endfor %}
+                        </div>
+                        <div class="card-footer">
+                            <form method="post" action="{% url 'social_chat_send' active_thread.pk %}">
+                                {% csrf_token %}
+                                <div class="input-group">
+                                    <textarea name="body" class="form-control" rows="2" placeholder="Type a reply…" required maxlength="4000"></textarea>
+                                    <div class="input-group-append">
+                                        <button type="submit" class="btn btn-primary">Send</button>
+                                    </div>
+                                </div>
+                                <small class="text-muted d-block mt-2">
+                                    WhatsApp uses your Cloud API token. Messenger/Instagram use the Page ID on the thread or the <strong>Facebook Page ID</strong> in WhatsApp &amp; Meta settings. Meta may block sends outside the messaging window — check their rules.
+                                </small>
+                            </form>
+                        </div>
+                    </div>
+                {% else %}
+                    <div class="card h-100">
+                        <div class="card-body d-flex align-items-center justify-content-center text-muted" style="min-height: 40vh;">
+                            <div class="text-center">
+                                <i class="fas fa-comments fa-3x mb-3 opacity-50"></i>
+                                <p class="mb-0">Select a conversation or wait for inbound messages from your connected channels.</p>
+                            </div>
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock content %}

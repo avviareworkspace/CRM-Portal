@@ -11,7 +11,7 @@ def notification_count(request):
 
 
 def pending_task_count(request):
-    """Provide pending task count for counsellor sidebar badge."""
+    """Sidebar badge: incomplete activities + upcoming visits."""
     if not request.user.is_authenticated or getattr(request.user, 'user_type', None) != '2':
         return {}
     try:
@@ -30,10 +30,7 @@ def pending_task_count(request):
 
 
 def lead_status_info(request):
-    """
-    Provide a status_code → {name, color} map and a choices list to every template.
-    Templates can use {{ lead_status_map }} for badge rendering and {{ lead_status_choices }} for dropdowns.
-    """
+    """lead_status_map and lead_status_choices for templates."""
     from .models import LeadStatus
     try:
         statuses = LeadStatus.objects.all().order_by('sort_order', 'name')
@@ -49,7 +46,7 @@ def lead_status_info(request):
 
 
 def admin_permissions(request):
-    """Make admin permission flags available in all templates."""
+    """perm_delete, perm_performance, etc. for admin templates."""
     if not request.user.is_authenticated or getattr(request.user, 'user_type', None) != '1':
         return {}
     try:

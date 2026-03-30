@@ -34,7 +34,6 @@ def counsellor_home(request):
         admin=request.user,
     )
     
-    # My Leads Statistics - optimized: single aggregation query
     my_leads = Lead.objects.filter(assigned_counsellor=counsellor)
     total_leads = my_leads.count()
     
@@ -52,51 +51,39 @@ def counsellor_home(request):
     converted_leads_qs = Lead.objects.filter(assigned_counsellor=counsellor, status='CLOSED_WON')
     total_converted_leads = converted_leads_qs.count()
     
-    # Get today's date range in the configured timezone
-    # Use localtime to get current time in configured timezone
     now_local = timezone.localtime(timezone.now())
-    
-    # Calculate today's start (00:00:00) and end (23:59:59.999999) in local timezone
     today_start = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
     today_end = today_start + timedelta(days=1)
-    
-    # Today's Scheduled Activities
+
     todays_activities = LeadActivity.objects.filter(
         counsellor=counsellor,
         scheduled_date__isnull=False,
         scheduled_date__gte=today_start,
         scheduled_date__lt=today_end
     ).select_related('lead', 'lead__source').order_by('scheduled_date')
-    
-    # Recent Activities (for other sections)
+
     recent_activities = LeadActivity.objects.filter(
         counsellor=counsellor
     ).select_related('lead', 'lead__source').order_by('-completed_date')[:10]
-    
-    # Today's Follow-ups - only show follow-ups scheduled for today
-    # Use date range filtering (Django will handle timezone conversion)
+
     upcoming_followups = Lead.objects.filter(
         assigned_counsellor=counsellor,
         next_follow_up__isnull=False,
         next_follow_up__gte=today_start,
         next_follow_up__lt=today_end
     ).select_related('source').order_by('next_follow_up')
-    
-    # Lead Status Distribution for Charts
+
     lead_status_data = {
         'NEW': new_leads,
         'CONTACTED': contacted_leads,
         'QUALIFIED': qualified_leads,
         'CLOSED_WON': closed_won,
     }
-    
-    # Monthly Performance
+
     current_month = timezone.now().replace(day=1)
     monthly_leads = my_leads.filter(created_at__gte=current_month).count()
-    # Successfully converted leads created in current month for this counsellor
     monthly_business = converted_leads_qs.filter(created_at__gte=current_month).count()
-    
-    # Pending tasks count
+
     incomplete_activities_count = LeadActivity.objects.filter(
         counsellor=counsellor, is_completed=False
     ).count()
@@ -767,10 +754,7 @@ def pending_tasks(request):
 
 @counsellor_required
 def my_daily_target(request):
-    """
-    Auto-build a prioritised task list up to target_count for today.
-    Order: today's pending visits → pending activities → leads by status (NEW last).
-    """
+    """Build today's task list up to the daily target (visits, then activities, then leads)."""
     from datetime import date
     counsellor = get_object_or_404(Counsellor, admin=request.user)
     today = date.today()
@@ -783,7 +767,6 @@ def my_daily_target(request):
     limit = assignment.target.target_count
     remaining = limit
 
-    # ── 1. Today's pending visits (highest priority) ──
     visits = list(
         Lead.objects.filter(
             assigned_counsellor=counsellor,
@@ -792,7 +775,6 @@ def my_daily_target(request):
     )
     remaining -= len(visits)
 
-    # ── 2. Pending activities ──
     activities = []
     if remaining > 0:
         activities = list(
@@ -803,7 +785,6 @@ def my_daily_target(request):
         )
         remaining -= len(activities)
 
-    # ── 3. Leads by status, excluding NEW (they come last) ──
     status_leads = []
     if remaining > 0:
         statuses = (
@@ -824,7 +805,6 @@ def my_daily_target(request):
                 status_leads.append({'status': st, 'leads': chunk})
                 remaining -= len(chunk)
 
-    # ── 4. NEW leads (lowest priority) ──
     new_leads = []
     if remaining > 0:
         new_leads = list(
