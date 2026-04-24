@@ -1,0 +1,67 @@
+{% extends 'main_app/base.html' %}
+{% block page_title %}{{ page_title }}{% endblock page_title %}
+{% block content_title %}{{ page_title }}{% endblock content_title %}
+
+{% block content %}
+<section class="content">
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-md-12">
+                <div class="card card-danger">
+                    <div class="card-header">
+                        <h3 class="card-title">Failed Lead Rows</h3>
+                    </div>
+                    <div class="card-body">
+                        {% if payload and payload.rows %}
+                            <div class="mb-3">
+                                <p class="mb-1"><strong>File:</strong> {{ payload.file_name }}</p>
+                                <p class="mb-1"><strong>Total Failed Rows:</strong> {{ payload.total_failed }}</p>
+                                {% if payload.truncated %}
+                                    <p class="text-warning mb-0">
+                                        Showing latest {{ payload.rows|length }} failed rows (older rows truncated).
+                                    </p>
+                                {% endif %}
+                            </div>
+
+                            <div class="mb-3">
+                                <a href="{% url 'download_import_failures_excel' %}" class="btn btn-danger">
+                                    <i class="fas fa-download"></i> Download Failed Rows Excel
+                                </a>
+                                <a href="{% url 'import_leads' %}" class="btn btn-primary">Back to Import</a>
+                            </div>
+
+                            <div class="table-responsive">
+                                <table class="table table-bordered table-striped">
+                                    <thead>
+                                        <tr>
+                                            <th>Row</th>
+                                            <th>Name</th>
+                                            <th>Email</th>
+                                            <th>Phone</th>
+                                            <th>Reason</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for row in payload.rows %}
+                                            <tr>
+                                                <td>{{ row.row_num }}</td>
+                                                <td>{{ row.name|default:"-" }}</td>
+                                                <td>{{ row.email|default:"-" }}</td>
+                                                <td>{{ row.phone|default:"-" }}</td>
+                                                <td>{{ row.reason }}</td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% else %}
+                            <p class="mb-3">No failed rows found for the latest import in this session.</p>
+                            <a href="{% url 'import_leads' %}" class="btn btn-primary">Go to Import Leads</a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock content %}

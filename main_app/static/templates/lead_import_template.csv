@@ -1,4 +1,4 @@
-name,email,phone,alternate_phone,address,School Name,graduation_status,graduation_course,graduation_year,graduation_college,course_interested
-John Doe,john.doe@example.com,1234567890,,"221B Baker Street, London",MIT University,YES,Computer Science,2020,MIT,MBA
-Jane Smith,jane.smith@example.com,9876543210,,"742 Evergreen Terrace, Springfield",Harvard University,NO,Not Applicable,,Not Applicable,Digital Marketing
-Mike Johnson,mike.johnson@example.com,5551234567,,"12 Palm Avenue, Noida",Stanford University,YES,Business Administration,2018,Harvard Business School,CFA Certification
+name,email,phone,alternate_phone,address,School Name,graduation_status,graduation_course,graduation_year,graduation_college,course_interested,industry
+John Doe,john.doe@example.com,1234567890,,"221B Baker Street, London",MIT University,YES,Computer Science,2020,MIT,MBA,Technology
+Jane Smith,jane.smith@example.com,9876543210,,"742 Evergreen Terrace, Springfield",Harvard University,NO,Not Applicable,,Not Applicable,Digital Marketing,Marketing
+Mike Johnson,mike.johnson@example.com,5551234567,,"12 Palm Avenue, Noida",Stanford University,YES,Business Administration,2018,Harvard Business School,CFA Certification,Finance

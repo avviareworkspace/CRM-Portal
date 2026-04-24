@@ -37,6 +37,51 @@ admin_required = user_type_required('1')
 
 logger = logging.getLogger(__name__)
 
+IMPORT_FAILURES_SESSION_KEY = "lead_import_failures"
+IMPORT_FAILURES_MAX_ROWS = 5000
+IMPORT_TEMPLATE_HEADERS = [
+    "name",
+    "email",
+    "phone",
+    "alternate_phone",
+    "address",
+    "School Name",
+    "graduation_status",
+    "graduation_course",
+    "graduation_year",
+    "graduation_college",
+    "course_interested",
+]
+IMPORT_TEMPLATE_SAMPLE_ROWS = [
+    [
+        "John Doe",
+        "john.doe@example.com",
+        "1234567890",
+        "",
+        "221B Baker Street, London",
+        "MIT University",
+        "YES",
+        "Computer Science",
+        "2020",
+        "MIT",
+        "MBA", 
+    ],
+    [
+        "Jane Smith",
+        "jane.smith@example.com",
+        "9876543210",
+        "",
+        "742 Evergreen Terrace, Springfield",
+        "Harvard University",
+        "NO",
+        "Not Applicable",
+        "",
+        "Not Applicable",
+        "Digital Marketing",
+    
+    ],
+]
+
 
 def _import_cell_str(row, key, default=""):
     """Normalize import cell to a clean string (handles empty / NaN from Excel)."""
@@ -52,6 +97,28 @@ def _import_cell_str(row, key, default=""):
 def _new_import_lead_id():
     """Match Lead.save() format but longer suffix to avoid collisions on bulk import."""
     return f"L-{datetime.now().strftime('%y%m%d')}-{uuid.uuid4().hex[:8].upper()}"
+
+
+def _build_import_failure_row(row_num, row, reason):
+    raw_row = {}
+    for key, value in (row or {}).items():
+        if key is None:
+            continue
+        norm_key = str(key).strip()
+        if not norm_key:
+            continue
+        if is_blank_import_value(value):
+            raw_row[norm_key] = ""
+        else:
+            raw_row[norm_key] = str(value).strip()
+    return {
+        "row_num": row_num,
+        "name": _import_cell_str(row, "name"),
+        "email": _import_cell_str(row, "email"),
+        "phone": _import_cell_str(row, "phone"),
+        "reason": str(reason),
+        "raw_row": raw_row,
+    }
 
 
 def _build_lead_from_import_row(row, source, assigned_counsellor):
@@ -748,7 +815,11 @@ def delete_all_leads(request):
 def import_leads(request):
     """Import leads from Excel/CSV file with automatic assignment options"""
     form = LeadImportForm(request.POST or None, request.FILES or None)
-    context = {'form': form, 'page_title': 'Import Leads'}
+    context = {
+        'form': form,
+        'page_title': 'Import Leads',
+        'has_import_failures': bool(request.session.get(IMPORT_FAILURES_SESSION_KEY)),
+    }
     
     if request.method == 'POST':
         if form.is_valid():
@@ -768,15 +839,16 @@ def import_leads(request):
                 error_count = 0
                 imported_leads = []
                 pending = []
+                failed_rows = []
                 batch_size = max(50, int(getattr(settings, "LEAD_IMPORT_BATCH_SIZE", 400)))
 
                 for row_num, row in iter_lead_import_rows(file, file.name):
                     try:
-                        pending.append(
-                            _build_lead_from_import_row(row, source, assigned_counsellor)
-                        )
+                        lead = _build_lead_from_import_row(row, source, assigned_counsellor)
+                        pending.append((row_num, row, lead))
                     except Exception as e:
                         error_count += 1
+                        failed_rows.append(_build_import_failure_row(row_num, row, e))
                         logger.error(
                             "Error parsing import row %s: %s",
                             row_num,
@@ -786,18 +858,19 @@ def import_leads(request):
 
                 for i in range(0, len(pending), batch_size):
                     chunk = pending[i : i + batch_size]
+                    chunk_leads = [x[2] for x in chunk]
                     try:
                         with transaction.atomic():
-                            Lead.objects.bulk_create(chunk, batch_size=batch_size)
-                        imported_leads.extend(chunk)
-                        success_count += len(chunk)
+                            Lead.objects.bulk_create(chunk_leads, batch_size=batch_size)
+                        imported_leads.extend(chunk_leads)
+                        success_count += len(chunk_leads)
                     except Exception as e:
                         logger.warning(
                             "Bulk insert failed for %s rows (%s); retrying one-by-one.",
                             len(chunk),
                             str(e),
                         )
-                        for lead in chunk:
+                        for row_num, row, lead in chunk:
                             try:
                                 with transaction.atomic():
                                     lead.save()
@@ -805,7 +878,13 @@ def import_leads(request):
                                 success_count += 1
                             except Exception as e2:
                                 error_count += 1
-                                logger.error("Error importing row: %s", str(e2), exc_info=True)
+                                failed_rows.append(_build_import_failure_row(row_num, row, e2))
+                                logger.error(
+                                    "Error importing row %s: %s",
+                                    row_num,
+                                    str(e2),
+                                    exc_info=True
+                                )
 
                 # bulk_create may omit pk on some DBs; auto-assign uses bulk_update and needs ids
                 if auto_assign and imported_leads:
@@ -850,6 +929,23 @@ def import_leads(request):
                 if success_count > 0:
                     invalidate_admin_dashboard_cache()
 
+                if failed_rows:
+                    request.session[IMPORT_FAILURES_SESSION_KEY] = {
+                        "created_at": timezone.now().isoformat(),
+                        "file_name": file.name,
+                        "total_failed": len(failed_rows),
+                        "rows": failed_rows[:IMPORT_FAILURES_MAX_ROWS],
+                        "truncated": len(failed_rows) > IMPORT_FAILURES_MAX_ROWS,
+                    }
+                    request.session.modified = True
+                    messages.info(
+                        request,
+                        "Review failed rows and reasons: /leads/import/failures/"
+                    )
+                else:
+                    request.session.pop(IMPORT_FAILURES_SESSION_KEY, None)
+                context['has_import_failures'] = bool(request.session.get(IMPORT_FAILURES_SESSION_KEY))
+
                 return redirect(reverse('manage_leads'))
                 
             except Exception as e:
@@ -859,6 +955,57 @@ def import_leads(request):
             messages.error(request, "Please fill the form properly!")
     
     return render(request, 'admin_template/import_leads.html', context)
+
+
+@admin_required
+def import_lead_failures(request):
+    payload = request.session.get(IMPORT_FAILURES_SESSION_KEY)
+    context = {
+        "page_title": "Lead Import Failures",
+        "payload": payload,
+    }
+    if not payload:
+        messages.info(request, "No failed lead import rows found in recent session.")
+    return render(request, "admin_template/import_lead_failures.html", context)
+
+
+@admin_required
+def download_import_failures_excel(request):
+    payload = request.session.get(IMPORT_FAILURES_SESSION_KEY)
+    if not payload or not payload.get("rows"):
+        messages.info(request, "No failed lead import rows available to download.")
+        return redirect(reverse("import_lead_failures"))
+
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Failed Leads"
+    rows = payload.get("rows") or []
+    original_headers = []
+    seen = set()
+    for row in rows:
+        raw = row.get("raw_row") or {}
+        for key in raw.keys():
+            if key in seen:
+                continue
+            seen.add(key)
+            original_headers.append(key)
+
+    ws.append(original_headers + ["failure_reason"])
+
+    for row in rows:
+        raw = row.get("raw_row") or {}
+        out = [raw.get(col, "") for col in original_headers]
+        out.append(row.get("reason", ""))
+        ws.append(out)
+
+    response = HttpResponse(
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    response["Content-Disposition"] = 'attachment; filename="lead_import_failures.xlsx"'
+    wb.save(response)
+    return response
 
 
 @admin_required
@@ -1766,11 +1913,22 @@ def download_import_template(request, file_type):
     import os
     from django.http import FileResponse
     from django.conf import settings
+    from openpyxl import Workbook
     
     if file_type == 'excel':
-        file_path = os.path.join(settings.BASE_DIR, 'main_app', 'static', 'templates', 'lead_import_template.xlsx')
-        content_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        filename = 'lead_import_template.xlsx'
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Lead Import Template"
+        ws.append(IMPORT_TEMPLATE_HEADERS)
+        for sample_row in IMPORT_TEMPLATE_SAMPLE_ROWS:
+            ws.append(sample_row)
+
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = 'attachment; filename="lead_import_template.xlsx"'
+        wb.save(response)
+        return response
     elif file_type == 'csv':
         file_path = os.path.join(settings.BASE_DIR, 'main_app', 'static', 'templates', 'lead_import_template.csv')
         content_type = 'text/csv'

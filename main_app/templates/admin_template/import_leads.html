@@ -158,6 +158,11 @@
                             <button type="submit" class="btn btn-primary">
                                 <i class="fas fa-upload"></i> Import Leads
                             </button>
+                            {% if has_import_failures %}
+                                <a href="{% url 'import_lead_failures' %}" class="btn btn-outline-danger">
+                                    <i class="fas fa-exclamation-triangle"></i> View Failed Rows
+                                </a>
+                            {% endif %}
                             <a href="{% url 'manage_leads' %}" class="btn btn-secondary">Cancel</a>
                         </div>
                     </form>
