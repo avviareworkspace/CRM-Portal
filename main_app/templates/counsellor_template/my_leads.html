@@ -73,6 +73,7 @@
                                 <tr>
                                     <th>Lead ID</th>
                                     <th>Name</th>
+                                    <th>School Name</th>
                                     <th>Email</th>
                                     <th>Phone</th>
                                     <th>Source</th>
@@ -88,6 +89,7 @@
                                 <tr>
                                     <td>{{lead.lead_id}}</td>
                                     <td>{{lead.first_name}} {{lead.last_name}}</td>
+                                    <td>{{ lead.school_name|default:"-" }}</td>
                                     <td>{{lead.email}}</td>
                                     <td>
                                         {% if lead.phone %}
@@ -165,6 +167,11 @@
                 {
                     "targets": 0,      // Lead ID column
                     "visible": false,  // hide by default
+                    "searchable": true
+                },
+                {
+                    "targets": 2,      // School Name column
+                    "visible": false,  // show via column visibility menu when needed
                     "searchable": true
                 }
             ],
