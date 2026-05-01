@@ -132,8 +132,6 @@ def _build_lead_from_import_row(row, source, assigned_counsellor):
         raise ValueError("Missing required column value: name")
     if not phone:
         raise ValueError("Missing required column value: phone")
-    if not course_interested:
-        raise ValueError("Missing required column value: course_interested")
 
     parts = full_name.split(None, 1)
     first_name = parts[0]
