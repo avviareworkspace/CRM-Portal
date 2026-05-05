@@ -40,6 +40,11 @@ urlpatterns = [
     path("admin/manage/", admin_views.manage_admins, name='manage_admins'),
     path("admin/edit/<int:admin_id>/", admin_views.edit_admin, name='edit_admin'),
     path("admin/delete/<int:admin_id>/", admin_views.delete_admin, name='delete_admin'),
+    path(
+        "counsellor/performance/data/",
+        admin_views.counsellor_performance_data,
+        name='counsellor_performance_data',
+    ),
     path("counsellor/performance/", admin_views.counsellor_performance, name='counsellor_performance'),
     path("counsellor/work/", admin_views.counsellor_work_view, name='counsellor_work_view'),
     

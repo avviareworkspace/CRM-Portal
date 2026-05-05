@@ -2,6 +2,7 @@ import json
 import logging
 import uuid
 from datetime import datetime, timedelta
+from decimal import Decimal
 
 from django.db import transaction
 from django.core.cache import cache
@@ -14,7 +15,7 @@ from django.templatetags.static import static
 from django.conf import settings
 from django.urls import reverse
 from django.views.generic import UpdateView
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 from django.contrib.auth.hashers import make_password
 from django.db.models import Count, Sum, Avg, Q, Case, When, Value, DecimalField
 from django.db.models.functions import TruncMonth
@@ -1781,53 +1782,110 @@ def manage_businesses(request):
     return render(request, 'admin_template/manage_businesses.html', context)
 
 
+def _refresh_counsellor_performance_month():
+    """
+    Recompute performance metrics for every active counsellor, persist monthly snapshot rows.
+
+    Total / funnel counts use the counsellor's full assigned roster (not ``created_at`` this month),
+    so bulk-assigned or older leads still appear. "Converted this month" uses ``updated_at`` in the
+    current calendar month for CLOSED_WON. Conversion rate = closed-won / total assigned (roster).
+    """
+    month_start = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    month_key = month_start.date()
+    qualified_statuses = (
+        'QUALIFIED', 'PROPOSAL_SENT', 'NEGOTIATION', 'CLOSED_WON'
+    )
+    rows_out = []
+    for counsellor in Counsellor.objects.filter(is_active=True).select_related('admin'):
+        roster = counsellor.lead_set.all()
+        total_assigned = roster.count()
+        contacted = roster.exclude(status='NEW').count()
+        qualified = roster.filter(status__in=qualified_statuses).count()
+        closed_won_total = roster.filter(status='CLOSED_WON').count()
+        converted_this_month = roster.filter(
+            status='CLOSED_WON',
+            updated_at__gte=month_start,
+        ).count()
+
+        if total_assigned > 0:
+            raw_rate = (
+                Decimal(closed_won_total) * Decimal('100') / Decimal(total_assigned)
+            ).quantize(Decimal('0.01'))
+            conversion_rate = min(raw_rate, Decimal('100.00'))
+        else:
+            conversion_rate = Decimal('0.00')
+
+        monthly_performance, _created = CounsellorPerformance.objects.update_or_create(
+            counsellor=counsellor,
+            month=month_key,
+            defaults={
+                'total_leads_assigned': total_assigned,
+                'total_leads_contacted': contacted,
+                'total_leads_qualified': qualified,
+                'total_business_generated': Decimal(converted_this_month),
+                'conversion_rate': conversion_rate,
+            },
+        )
+
+        rows_out.append({
+            'counsellor_id': counsellor.id,
+            'first_name': counsellor.admin.first_name or '',
+            'last_name': counsellor.admin.last_name or '',
+            'employee_id': counsellor.employee_id,
+            'total_leads_assigned': total_assigned,
+            'total_leads_contacted': contacted,
+            'total_leads_qualified': qualified,
+            'converted_leads': converted_this_month,
+            'average_response_time': monthly_performance.average_response_time,
+            'conversion_rate': float(conversion_rate),
+        })
+    return rows_out
+
+
 @admin_required
 @admin_perm_required('performance')
 def counsellor_performance(request):
-    """View counsellor performance analytics"""
-    counsellors = Counsellor.objects.filter(is_active=True)
-    performance_data = []
-    
-    for counsellor in counsellors:
-        # Get monthly performance
-        current_month = timezone.now().replace(day=1)
-        monthly_performance = CounsellorPerformance.objects.filter(
-            counsellor=counsellor,
-            month=current_month
-        ).first()
-        
-        if not monthly_performance:
-            # Calculate performance if not exists
-            monthly_leads = counsellor.lead_set.filter(created_at__gte=current_month).count()
-            # Monthly successfully converted leads for this counsellor
-            monthly_business = counsellor.lead_set.filter(
-                status='CLOSED_WON',
-                created_at__gte=current_month
-            ).count()
-            
-            try:
-                conversion_rate = monthly_business / monthly_leads * 100 if monthly_leads > 0 else 0
-            except ZeroDivisionError:
-                conversion_rate = 0
-                
-            monthly_performance = CounsellorPerformance.objects.create(
-                counsellor=counsellor,
-                month=current_month,
-                total_leads_assigned=monthly_leads,
-                total_business_generated=monthly_business,
-                conversion_rate=conversion_rate
-            )
-        
-        performance_data.append({
-            'counsellor': counsellor,
-            'performance': monthly_performance
-        })
-    
+    """Counsellor performance (current month); metrics refresh via poll endpoint for live updates."""
+    performance_rows = _refresh_counsellor_performance_month()
     context = {
-        'performance_data': performance_data,
-        'page_title': 'Counsellor Performance'
+        'performance_rows': performance_rows,
+        'page_title': 'Counsellor Performance',
     }
     return render(request, 'admin_template/counsellor_performance.html', context)
+
+
+@admin_required
+@admin_perm_required('performance')
+@require_GET
+def counsellor_performance_data(request):
+    """JSON snapshot for live refresh on the performance dashboard."""
+    try:
+        rows = _refresh_counsellor_performance_month()
+        # Ensure JSON-serializable primitives only (ORM-free dicts).
+        safe_rows = []
+        for r in rows:
+            safe_rows.append({
+                'counsellor_id': int(r['counsellor_id']),
+                'first_name': str(r.get('first_name') or ''),
+                'last_name': str(r.get('last_name') or ''),
+                'employee_id': str(r.get('employee_id') or ''),
+                'total_leads_assigned': int(r['total_leads_assigned']),
+                'total_leads_contacted': int(r['total_leads_contacted']),
+                'total_leads_qualified': int(r['total_leads_qualified']),
+                'converted_leads': int(r['converted_leads']),
+                'average_response_time': int(r.get('average_response_time') or 0),
+                'conversion_rate': float(r['conversion_rate']),
+            })
+        return JsonResponse({
+            'updated_at': timezone.now().isoformat(),
+            'rows': safe_rows,
+        })
+    except Exception as exc:
+        logger.exception('counsellor_performance_data failed')
+        return JsonResponse(
+            {'error': 'Unable to load performance data.', 'detail': str(exc)},
+            status=500,
+        )
 
 
 @admin_required

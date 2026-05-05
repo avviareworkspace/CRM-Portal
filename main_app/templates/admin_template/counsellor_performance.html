@@ -72,62 +72,63 @@
                 <div class="card">
                     <div class="card-header">
                         <h3 class="card-title">Counsellor Performance Overview</h3>
-                        <div class="card-tools">
-                            <button type="button" class="btn btn-primary" onclick="exportPerformance()">
+                        <div class="card-tools d-flex align-items-center flex-wrap">
+                            <span class="badge badge-success mr-2 mb-1" id="perf-live-badge">
+                                <i class="fas fa-sync-alt fa-spin d-none" id="perf-refresh-spinner"></i>
+                                Live
+                            </span>
+                            <small class="text-muted mr-3 mb-1" id="perf-last-updated"></small>
+                            <button type="button" class="btn btn-primary mb-1" onclick="exportPerformance()">
                                 <i class="fas fa-download"></i> Export Report
                             </button>
                         </div>
                     </div>
                     <div class="card-body">
-                        {% if performance_data %}
-                            <div class="row">
-                                {% for item in performance_data %}
-                                <div class="col-md-6 col-lg-4">
-                                    <div class="performance-card">
-                                        <div class="performance-header">
-                                            <h5 class="mb-0">
-                                                <i class="fas fa-user-tie mr-2"></i>
-                                                {{item.counsellor.admin.first_name}} {{item.counsellor.admin.last_name}}
-                                            </h5>
-                                            <small>{{item.counsellor.employee_id}}</small>
+                        <div id="performance-empty-state" class="text-center py-5 {% if performance_rows %}d-none{% endif %}">
+                            <i class="fas fa-chart-bar fa-3x text-muted mb-3"></i>
+                            <h4 class="text-muted">No Performance Data Available</h4>
+                            <p class="text-muted mb-0">Performance data will appear here once active counsellors are available.</p>
+                        </div>
+                        <div class="row {% if not performance_rows %}d-none{% endif %}" id="performance-cards-row">
+                            {% for row in performance_rows %}
+                            <div class="col-md-6 col-lg-4">
+                                <div class="performance-card" data-counsellor-performance-card data-counsellor-id="{{ row.counsellor_id }}">
+                                    <div class="performance-header">
+                                        <h5 class="mb-0 js-counsellor-name">
+                                            <i class="fas fa-user-tie mr-2"></i>
+                                            {{ row.first_name }} {{ row.last_name }}
+                                        </h5>
+                                        <small class="js-employee-id">{{ row.employee_id }}</small>
+                                    </div>
+                                    <div class="performance-body">
+                                        <div class="metric-item">
+                                            <span class="metric-label">Total Leads Assigned:</span>
+                                            <span class="metric-value">{{ row.total_leads_assigned }}</span>
                                         </div>
-                                        <div class="performance-body">
-                                            <div class="metric-item">
-                                                <span class="metric-label">Total Leads Assigned:</span>
-                                                <span class="metric-value">{{item.performance.total_leads_assigned}}</span>
-                                            </div>
-                                            <div class="metric-item">
-                                                <span class="metric-label">Leads Contacted:</span>
-                                                <span class="metric-value">{{item.performance.total_leads_contacted}}</span>
-                                            </div>
-                                            <div class="metric-item">
-                                                <span class="metric-label">Leads Qualified:</span>
-                                                <span class="metric-value">{{item.performance.total_leads_qualified}}</span>
-                                            </div>
-                                            <div class="metric-item">
-                                                <span class="metric-label">Converted Leads This Month:</span>
-                                                <span class="metric-value">{{item.performance.total_business_generated|floatformat:0}}</span>
-                                            </div>
-                                            <div class="metric-item">
-                                                <span class="metric-label">Avg Response Time:</span>
-                                                <span class="metric-value">{{item.performance.average_response_time}}h</span>
-                                            </div>
-                                            
-                                            <div class="conversion-rate">
-                                                {{item.performance.conversion_rate|floatformat:1}}% Conversion Rate
-                                            </div>
+                                        <div class="metric-item">
+                                            <span class="metric-label">Leads Contacted:</span>
+                                            <span class="metric-value">{{ row.total_leads_contacted }}</span>
+                                        </div>
+                                        <div class="metric-item">
+                                            <span class="metric-label">Leads Qualified:</span>
+                                            <span class="metric-value">{{ row.total_leads_qualified }}</span>
+                                        </div>
+                                        <div class="metric-item">
+                                            <span class="metric-label">Converted Leads This Month:</span>
+                                            <span class="metric-value">{{ row.converted_leads }}</span>
+                                        </div>
+                                        <div class="metric-item">
+                                            <span class="metric-label">Avg Response Time:</span>
+                                            <span class="metric-value">{{ row.average_response_time }}h</span>
+                                        </div>
+                                        <div class="conversion-rate">
+                                            {{ row.conversion_rate|floatformat:1 }}% Conversion Rate
                                         </div>
                                     </div>
                                 </div>
-                                {% endfor %}
                             </div>
-                        {% else %}
-                            <div class="text-center py-5">
-                                <i class="fas fa-chart-bar fa-3x text-muted mb-3"></i>
-                                <h4 class="text-muted">No Performance Data Available</h4>
-                                <p class="text-muted">Performance data will appear here once counsellors start working with leads.</p>
-                            </div>
-                        {% endif %}
+                            {% endfor %}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -137,22 +138,165 @@
 {% endblock content %}
 
 {% block custom_js %}
+{{ performance_rows|json_script:"counsellor-performance-initial" }}
 <script>
-    function exportPerformance() {
-        // Create a simple CSV export
-        let csv = 'Counsellor,Employee ID,Total Leads,Leads Contacted,Leads Qualified,Converted Leads (Month),Conversion Rate\n';
-        
-        {% for item in performance_data %}
-        csv += '{{item.counsellor.admin.first_name}} {{item.counsellor.admin.last_name}},{{item.counsellor.employee_id}},{{item.performance.total_leads_assigned}},{{item.performance.total_leads_contacted}},{{item.performance.total_leads_qualified}},{{item.performance.total_business_generated}},{{item.performance.conversion_rate}}%\n';
-        {% endfor %}
-        
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
+(function () {
+    var pollUrl = "{% url 'counsellor_performance_data' %}";
+    var pollMs = 15000;
+
+    function escapeHtml(text) {
+        if (text === null || text === undefined) return '';
+        return String(text)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function readInitialRows() {
+        var el = document.getElementById('counsellor-performance-initial');
+        if (!el || !el.textContent) return [];
+        try {
+            return JSON.parse(el.textContent);
+        } catch (e) {
+            console.warn('counsellor performance: could not parse initial JSON', e);
+            return [];
+        }
+    }
+
+    window.latestPerformanceRows = readInitialRows();
+
+    function formatUpdatedAt(iso) {
+        if (!iso) return '';
+        try {
+            var d = new Date(iso);
+            return 'Updated ' + d.toLocaleString();
+        } catch (e) {
+            return '';
+        }
+    }
+
+    function renderPerformanceCards(rows) {
+        var rowEl = document.getElementById('performance-cards-row');
+        var emptyEl = document.getElementById('performance-empty-state');
+        if (!rowEl || !emptyEl) return;
+
+        if (!rows || rows.length === 0) {
+            rowEl.classList.add('d-none');
+            rowEl.innerHTML = '';
+            emptyEl.classList.remove('d-none');
+            return;
+        }
+
+        emptyEl.classList.add('d-none');
+        rowEl.classList.remove('d-none');
+
+        var html = '';
+        rows.forEach(function (row) {
+            var pct = typeof row.conversion_rate === 'number' ? row.conversion_rate.toFixed(1) : escapeHtml(row.conversion_rate);
+            var resp = row.average_response_time != null ? row.average_response_time : '0';
+            html += '<div class="col-md-6 col-lg-4">';
+            html += '<div class="performance-card" data-counsellor-performance-card data-counsellor-id="' + row.counsellor_id + '">';
+            html += '<div class="performance-header">';
+            html += '<h5 class="mb-0 js-counsellor-name"><i class="fas fa-user-tie mr-2"></i>';
+            html += escapeHtml(row.first_name) + ' ' + escapeHtml(row.last_name);
+            html += '</h5>';
+            html += '<small class="js-employee-id">' + escapeHtml(row.employee_id) + '</small>';
+            html += '</div><div class="performance-body">';
+            html += '<div class="metric-item"><span class="metric-label">Total Leads Assigned:</span>';
+            html += '<span class="metric-value">' + row.total_leads_assigned + '</span></div>';
+            html += '<div class="metric-item"><span class="metric-label">Leads Contacted:</span>';
+            html += '<span class="metric-value">' + row.total_leads_contacted + '</span></div>';
+            html += '<div class="metric-item"><span class="metric-label">Leads Qualified:</span>';
+            html += '<span class="metric-value">' + row.total_leads_qualified + '</span></div>';
+            html += '<div class="metric-item"><span class="metric-label">Converted Leads This Month:</span>';
+            html += '<span class="metric-value">' + row.converted_leads + '</span></div>';
+            html += '<div class="metric-item"><span class="metric-label">Avg Response Time:</span>';
+            html += '<span class="metric-value">' + resp + 'h</span></div>';
+            html += '<div class="conversion-rate">' + pct + '% Conversion Rate</div>';
+            html += '</div></div></div>';
+        });
+        rowEl.innerHTML = html;
+    }
+
+    function setPollStatus(message, isError) {
+        var meta = document.getElementById('perf-last-updated');
+        if (!meta) return;
+        meta.textContent = message || '';
+        meta.classList.toggle('text-danger', !!isError);
+        meta.classList.toggle('text-muted', !isError);
+    }
+
+    function applyPerformancePayload(data) {
+        if (!data || !Array.isArray(data.rows)) {
+            setPollStatus('Could not refresh metrics (unexpected response). Try reloading the page.', true);
+            return;
+        }
+        window.latestPerformanceRows = data.rows;
+        setPollStatus(formatUpdatedAt(data.updated_at), false);
+        renderPerformanceCards(data.rows);
+    }
+
+    window.exportPerformance = function () {
+        var rows = window.latestPerformanceRows || [];
+        var csv = 'Counsellor,Employee ID,Total Leads,Leads Contacted,Leads Qualified,Converted Leads (Month),Conversion Rate\n';
+        rows.forEach(function (row) {
+            var name = ((row.first_name || '') + ' ' + (row.last_name || '')).trim().replace(/"/g, '""');
+            csv += '"' + name + '"' + ',' + row.employee_id + ',' + row.total_leads_assigned + ',' +
+                row.total_leads_contacted + ',' + row.total_leads_qualified + ',' + row.converted_leads + ',' +
+                (typeof row.conversion_rate === 'number' ? row.conversion_rate.toFixed(2) : row.conversion_rate) + '%\n';
+        });
+        var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        var url = window.URL.createObjectURL(blob);
+        var a = document.createElement('a');
         a.href = url;
         a.download = 'counsellor_performance.csv';
         a.click();
         window.URL.revokeObjectURL(url);
+    };
+
+    function poll() {
+        var spinner = document.getElementById('perf-refresh-spinner');
+        if (spinner) spinner.classList.remove('d-none');
+        fetch(pollUrl, {
+            method: 'GET',
+            credentials: 'same-origin',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            }
+        })
+            .then(function (r) {
+                var ct = r.headers.get('content-type') || '';
+                if (!ct.includes('application/json')) {
+                    throw new Error('Session may have expired or you were redirected. Reload the page.');
+                }
+                if (!r.ok) {
+                    return r.json().then(function (body) {
+                        var msg = (body && body.error) ? body.error : ('HTTP ' + r.status);
+                        throw new Error(msg);
+                    }).catch(function () {
+                        throw new Error('HTTP ' + r.status);
+                    });
+                }
+                return r.json();
+            })
+            .then(applyPerformancePayload)
+            .catch(function (err) {
+                console.warn('counsellor performance poll:', err);
+                setPollStatus(err && err.message ? err.message : 'Could not refresh metrics.', true);
+            })
+            .finally(function () {
+                if (spinner) spinner.classList.add('d-none');
+            });
     }
+
+    var cardsRow = document.getElementById('performance-cards-row');
+    if (cardsRow) {
+        setPollStatus('Updating every ' + (pollMs / 1000) + 's…', false);
+        poll();
+        setInterval(poll, pollMs);
+    }
+})();
 </script>
 {% endblock custom_js %}
