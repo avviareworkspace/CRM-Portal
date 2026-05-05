@@ -127,6 +127,12 @@ def my_leads(request):
     # Use server-side pagination to keep response fast with many leads
     leads = paginate_queryset(request, leads_list, 50)
 
+    # Preserve filters (e.g. status) in pagination links, same pattern as admin manage_leads
+    query_params = request.GET.copy()
+    if 'page' in query_params:
+        del query_params['page']
+    query_string = query_params.urlencode()
+
     # Audit: log that this counsellor listed their leads (once per request)
     try:
         DataAccessLog.objects.create(
@@ -141,7 +147,8 @@ def my_leads(request):
     context = {
         'leads': leads,
         'page_title': 'My Leads',
-        'status_filter': status_filter
+        'status_filter': status_filter,
+        'query_string': query_string,
     }
     return render(request, 'counsellor_template/my_leads.html', context)
 

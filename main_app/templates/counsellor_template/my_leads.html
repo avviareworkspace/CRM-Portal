@@ -146,6 +146,38 @@
                                 {% endfor %}
                             </tbody>
                         </table>
+
+                        {% if leads.paginator %}
+                        <div class="mt-3">
+                            <ul class="pagination pagination-sm m-0 float-right">
+                                {% if leads.has_previous %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="?page={{ leads.previous_page_number }}{% if query_string %}&{{ query_string }}{% endif %}">&laquo;</a>
+                                    </li>
+                                {% else %}
+                                    <li class="page-item disabled"><span class="page-link">&laquo;</span></li>
+                                {% endif %}
+
+                                {% for num in leads.paginator.page_range %}
+                                    {% if num == leads.number %}
+                                        <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+                                    {% elif num >= leads.number|add:'-2' and num <= leads.number|add:'2' %}
+                                        <li class="page-item">
+                                            <a class="page-link" href="?page={{ num }}{% if query_string %}&{{ query_string }}{% endif %}">{{ num }}</a>
+                                        </li>
+                                    {% endif %}
+                                {% endfor %}
+
+                                {% if leads.has_next %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="?page={{ leads.next_page_number }}{% if query_string %}&{{ query_string }}{% endif %}">&raquo;</a>
+                                    </li>
+                                {% else %}
+                                    <li class="page-item disabled"><span class="page-link">&raquo;</span></li>
+                                {% endif %}
+                            </ul>
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -158,10 +190,12 @@
 <script>
     $(function () {
         $("#example1").DataTable({
-            "responsive": true,
+            // Match admin manage_leads: Django paginator handles pages; DataTables only for export/colvis/sort on current page
+            "responsive": false,
+            "paging": false,
+            "info": false,
             "lengthChange": false,
             "autoWidth": false,
-            "pageLength": 25,
             "scrollX": true,
             "columnDefs": [
                 {
